@@ -6,6 +6,7 @@ import type { FileDiffMetadata } from '@pierre/diffs'
 import type { ReviewComment } from '../types'
 import { useDiff } from './hooks/useDiff'
 import { useComments } from './hooks/useComments'
+import { commentScope } from '../commentFormat'
 import { useReview } from './hooks/useReview'
 import { useSettings } from './hooks/useSettings'
 import { useViewed } from './hooks/useViewed'
@@ -36,7 +37,7 @@ export function App() {
     staged: settings.staged,
     untracked: settings.untracked,
   })
-  const { comments, addComment, removeComment, editComment, copyAllComments } =
+  const { comments, addComment, addScopedComment, removeComment, editComment, copyAllComments } =
     useComments()
   const { meta: reviewMeta } = useReview()
   const [activeFile, setActiveFile] = useState<string | null>(null)
@@ -124,6 +125,7 @@ export function App() {
   const fileAnnotationsMap = useMemo(() => {
     const map = new Map<string, { side: ReviewComment['side']; lineNumber: number; metadata: ReviewComment }[]>()
     for (const c of comments) {
+      if (commentScope(c) !== 'line') continue
       let list = map.get(c.filePath)
       if (!list) {
         list = []
@@ -137,6 +139,17 @@ export function App() {
     }
     return map
   }, [comments])
+
+  const fileCommentsMap = useMemo(() => {
+    const map = new Map<string, ReviewComment[]>()
+    for (const c of comments) {
+      if (commentScope(c) !== 'file') continue
+      map.set(c.filePath, [...(map.get(c.filePath) ?? []), c])
+    }
+    return map
+  }, [comments])
+
+  const diffComments = useMemo(() => comments.filter((c) => commentScope(c) === 'diff'), [comments])
 
   const handleFileClick = useCallback((filePath: string) => {
     setActiveFile(filePath)
@@ -243,6 +256,9 @@ export function App() {
               binaryFiles={binaryFileMap}
               onViewedChange={handleViewedChange}
               fileAnnotationsMap={fileAnnotationsMap}
+              fileCommentsMap={fileCommentsMap}
+              diffComments={diffComments}
+              onAddScopedComment={addScopedComment}
               onAddComment={addComment}
               onDeleteComment={removeComment}
               onEditComment={editComment}

@@ -74,10 +74,15 @@ export function CommentTracker({ comments }: CommentTrackerProps) {
                 <div className="ct-item-header">
                   <StatusBadge status={status} />
                   <span className="ct-item-file" title={comment.filePath}>
-                    {fileName(comment.filePath)}:
-                    {comment.startLineNumber != null && comment.startLineNumber !== comment.lineNumber
-                      ? `${comment.startLineNumber}-${comment.lineNumber}`
-                      : comment.lineNumber}
+                    {comment.scope === 'diff'
+                      ? 'Whole diff'
+                      : comment.scope === 'file'
+                        ? fileName(comment.filePath)
+                        : `${fileName(comment.filePath)}:${
+                            comment.startLineNumber != null && comment.startLineNumber !== comment.lineNumber
+                              ? `${comment.startLineNumber}-${comment.lineNumber}`
+                              : comment.lineNumber
+                          }`}
                   </span>
                   <span className="ct-item-time">{timeAgo(comment.createdAt)}</span>
                 </div>

@@ -2,6 +2,7 @@ import type { CommentStore } from './comments.js'
 import type { ImportResult, ReviewComment } from './types.js'
 
 export interface ParsedComment {
+  scope?: 'file' | 'diff'
   filePath: string
   side: 'additions' | 'deletions'
   lineNumber: number
@@ -61,11 +62,32 @@ export function parseCommentExport(text: string): { comments: ParsedComment[]; u
   const comments: ParsedComment[] = []
   let unreadable = 0
 
+  const scopedRe = /<comment scope="(file|diff)"(?:\s+status="([^"]*)")?>\n([\s\S]*?)\n<\/comment>/g
+  const pushScoped = (filePath: string, text: string) => {
+    let m: RegExpExecArray | null
+    while ((m = scopedRe.exec(text))) {
+      comments.push({
+        scope: m[1] as 'file' | 'diff',
+        filePath,
+        side: 'additions',
+        lineNumber: 0,
+        lineContent: '',
+        body: m[3],
+        status: m[2] === 'resolved' ? 'resolved' : 'open',
+      })
+    }
+  }
+
+  // Diff-level comments sit outside any <file> block.
+  pushScoped('', text.replace(/<file path="[^"]*">\n[\s\S]*?\n<\/file>/g, ''))
+
   const fileRe = /<file path="([^"]*)">\n([\s\S]*?)\n<\/file>/g
   let fileMatch: RegExpExecArray | null
   while ((fileMatch = fileRe.exec(text))) {
     const filePath = fileMatch[1]
     const fileBody = fileMatch[2]
+
+    pushScoped(filePath, fileBody)
 
     const commentRe = /<comment line="([^"]*)"(?:\s+status="([^"]*)")?>\n([\s\S]*?)\n<\/comment>/g
     let commentMatch: RegExpExecArray | null
@@ -83,10 +105,11 @@ export function parseCommentExport(text: string): { comments: ParsedComment[]; u
 }
 
 function commentAnchorMatches(
-  a: { filePath: string; side: string; lineNumber: number; startLineNumber?: number; body: string },
-  b: { filePath: string; side: string; lineNumber: number; startLineNumber?: number; body: string },
+  a: { scope?: string; filePath: string; side: string; lineNumber: number; startLineNumber?: number; body: string },
+  b: { scope?: string; filePath: string; side: string; lineNumber: number; startLineNumber?: number; body: string },
 ): boolean {
   return (
+    (a.scope ?? 'line') === (b.scope ?? 'line') &&
     a.filePath === b.filePath &&
     a.side === b.side &&
     a.lineNumber === b.lineNumber &&
@@ -115,6 +138,7 @@ export async function importComments(store: CommentStore, text: string): Promise
     }
     const created = await store.add({
       id: crypto.randomUUID(),
+      ...(candidate.scope ? { scope: candidate.scope } : {}),
       filePath: candidate.filePath,
       side: candidate.side,
       lineNumber: candidate.lineNumber,

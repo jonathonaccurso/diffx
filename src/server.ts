@@ -215,13 +215,29 @@ export function createApp(options: CreateAppOptions) {
 
   app.post('/api/comments', async (c) => {
     const body = await c.req.json()
+    const scope: 'line' | 'file' | 'diff' = body.scope === 'file' || body.scope === 'diff' ? body.scope : 'line'
+    if (scope === 'file' && (typeof body.filePath !== 'string' || body.filePath === '')) {
+      return c.json({ error: 'File comment requires a filePath' }, 400)
+    }
+    const anchor =
+      scope === 'line'
+        ? {
+            filePath: body.filePath,
+            side: body.side,
+            lineNumber: body.lineNumber,
+            startLineNumber: body.startLineNumber,
+            lineContent: body.lineContent,
+          }
+        : {
+            scope,
+            filePath: scope === 'file' ? (body.filePath as string) : '',
+            side: 'additions' as const,
+            lineNumber: 0,
+            lineContent: '',
+          }
     const comment = {
       id: crypto.randomUUID(),
-      filePath: body.filePath,
-      side: body.side,
-      lineNumber: body.lineNumber,
-      startLineNumber: body.startLineNumber,
-      lineContent: body.lineContent,
+      ...anchor,
       body: body.body,
       status: 'open' as const,
       createdAt: Date.now(),

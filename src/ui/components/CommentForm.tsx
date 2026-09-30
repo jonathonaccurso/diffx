@@ -4,11 +4,12 @@ interface CommentFormProps {
   lineRange?: [number, number]
   initialBody?: string
   submitLabel?: string
+  placeholder?: string
   onSubmit: (body: string) => void
   onCancel: () => void
 }
 
-export function CommentForm({ lineRange, initialBody, submitLabel, onSubmit, onCancel }: CommentFormProps) {
+export function CommentForm({ lineRange, initialBody, submitLabel, placeholder, onSubmit, onCancel }: CommentFormProps) {
   const [body, setBody] = useState(initialBody ?? '')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -45,7 +46,7 @@ export function CommentForm({ lineRange, initialBody, submitLabel, onSubmit, onC
         value={body}
         onChange={(e) => setBody(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Leave a review comment..."
+        placeholder={placeholder ?? 'Leave a review comment...'}
         rows={3}
       />
       <div className="comment-form-actions">

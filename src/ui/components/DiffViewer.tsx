@@ -1,9 +1,11 @@
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import type { FileDiffMetadata, DiffLineAnnotation, AnnotationSide } from '@pierre/diffs'
 import type { ReviewComment } from '../../types'
 import type { BinaryFileInfo } from '../hooks/useDiff'
 import { FileDiffCard } from './FileDiffCard'
 import { BinaryFileDiff } from './BinaryFileDiff'
+import { CommentBubble } from './CommentBubble'
+import { CommentForm } from './CommentForm'
 
 interface DiffViewerProps {
   files: FileDiffMetadata[]
@@ -15,6 +17,9 @@ interface DiffViewerProps {
   binaryFiles: Map<string, BinaryFileInfo>
   onViewedChange: (filePath: string, viewed: boolean) => void
   fileAnnotationsMap: Map<string, DiffLineAnnotation<ReviewComment>[]>
+  fileCommentsMap: Map<string, ReviewComment[]>
+  diffComments: ReviewComment[]
+  onAddScopedComment: (scope: 'file' | 'diff', filePath: string, body: string) => void
   onAddComment: (
     filePath: string,
     side: AnnotationSide,
@@ -37,6 +42,7 @@ export function nextUnviewedFile(
 }
 
 const emptyAnnotations: DiffLineAnnotation<ReviewComment>[] = []
+const emptyComments: ReviewComment[] = []
 
 export const DiffViewer = memo(function DiffViewer({
   files,
@@ -48,6 +54,9 @@ export const DiffViewer = memo(function DiffViewer({
   binaryFiles,
   onViewedChange,
   fileAnnotationsMap,
+  fileCommentsMap,
+  diffComments,
+  onAddScopedComment,
   onAddComment,
   onDeleteComment,
   onEditComment,
@@ -86,6 +95,8 @@ export const DiffViewer = memo(function DiffViewer({
     [onViewedChange, sortedFiles, viewedFiles],
   )
 
+  const [composingDiffComment, setComposingDiffComment] = useState(false)
+
   if (sortedFiles.length === 0) {
     return (
       <div className="empty-state">
@@ -96,6 +107,25 @@ export const DiffViewer = memo(function DiffViewer({
 
   return (
     <div className="diff-viewer">
+      <div className="diff-comments">
+        {diffComments.map((comment) => (
+          <CommentBubble key={comment.id} comment={comment} onDelete={onDeleteComment} onEdit={onEditComment} />
+        ))}
+        {composingDiffComment ? (
+          <CommentForm
+            placeholder="Comment on the whole diff..."
+            onSubmit={(body) => {
+              onAddScopedComment('diff', '', body)
+              setComposingDiffComment(false)
+            }}
+            onCancel={() => setComposingDiffComment(false)}
+          />
+        ) : (
+          <button className="btn btn-secondary diff-comment-add" onClick={() => setComposingDiffComment(true)}>
+            Comment on diff
+          </button>
+        )}
+      </div>
       {sortedFiles.map((file, index) => {
         const filePath = file.name
         const binaryInfo = binaryFiles.get(filePath)
@@ -122,6 +152,8 @@ export const DiffViewer = memo(function DiffViewer({
             fileDiff={file}
             filePath={filePath}
             annotations={fileAnnotationsMap.get(filePath) ?? emptyAnnotations}
+            fileComments={fileCommentsMap.get(filePath) ?? emptyComments}
+            onAddFileComment={onAddScopedComment}
             diffStyle={diffStyle}
             tabSize={tabSizeMap[filePath] ?? defaultTabSize}
             softWrap={softWrap}

@@ -16,6 +16,8 @@ interface FileDiffCardProps {
   fileDiff: FileDiffMetadata
   filePath: string
   annotations: DiffLineAnnotation<ReviewComment>[]
+  fileComments: ReviewComment[]
+  onAddFileComment: (scope: 'file' | 'diff', filePath: string, body: string) => void
   diffStyle: 'split' | 'unified'
   tabSize: number
   softWrap: boolean
@@ -38,6 +40,8 @@ export const FileDiffCard = memo(function FileDiffCard({
   fileDiff,
   filePath,
   annotations,
+  fileComments,
+  onAddFileComment,
   diffStyle,
   tabSize,
   softWrap,
@@ -47,6 +51,7 @@ export const FileDiffCard = memo(function FileDiffCard({
   onDeleteComment,
   onEditComment,
 }: FileDiffCardProps) {
+  const [composingFileComment, setComposingFileComment] = useState(false)
   const [pending, setPending] = useState<PendingComment | null>(null)
   // Controlled so it can be cleared when the composer closes: while the
   // library holds a selection it pins the "+" to it and ignores hover.
@@ -96,6 +101,21 @@ export const FileDiffCard = memo(function FileDiffCard({
 
   return (
     <div className={`file-diff-card ${viewed ? 'file-diff-viewed' : ''}`} id={id}>
+      <div className="file-comments">
+        {fileComments.map((comment) => (
+          <CommentBubble key={comment.id} comment={comment} onDelete={onDeleteComment} onEdit={onEditComment} />
+        ))}
+        {composingFileComment && (
+          <CommentForm
+            placeholder={`Comment on ${filePath}...`}
+            onSubmit={(body) => {
+              onAddFileComment('file', filePath, body)
+              setComposingFileComment(false)
+            }}
+            onCancel={() => setComposingFileComment(false)}
+          />
+        )}
+      </div>
       {viewed ? (
         <div className="file-diff-viewed-header">
           <span className="file-diff-viewed-name">{filePath}</span>
@@ -137,7 +157,18 @@ export const FileDiffCard = memo(function FileDiffCard({
             lineAnnotations={allAnnotations}
             selectedLines={selection}
             renderHeaderMetadata={() => (
-              <label className="viewed-label" onClick={(e) => e.stopPropagation()}>
+              <>
+                <button
+                  className="file-comment-add"
+                  title="Comment on this file"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setComposingFileComment(true)
+                  }}
+                >
+                  Comment
+                </button>
+                <label className="viewed-label" onClick={(e) => e.stopPropagation()}>
                 <input
                   type="checkbox"
                   checked={viewed}
@@ -145,6 +176,7 @@ export const FileDiffCard = memo(function FileDiffCard({
                 />
                 Viewed
               </label>
+              </>
             )}
             renderAnnotation={(annotation) => {
               if ('_pending' in annotation.metadata) {

@@ -6,6 +6,10 @@ export interface CommentReply {
 
 export interface ReviewComment {
   id: string
+  // Absent means 'line'. File- and diff-level comments carry no line anchor:
+  // side 'additions', lineNumber 0, empty lineContent; diff-level ones also
+  // have an empty filePath.
+  scope?: 'line' | 'file' | 'diff'
   filePath: string
   side: 'deletions' | 'additions'
   // The last line of the comment's range. For a single-line comment this is

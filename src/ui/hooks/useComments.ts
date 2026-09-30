@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { DiffLineAnnotation } from '@pierre/diffs'
 import type { ReviewComment } from '../../types'
+import { commentScope, formatComments } from '../../commentFormat'
 
 export const COMMENTS_KEY = ['comments']
 
@@ -15,7 +16,15 @@ export function useComments() {
   const { data: comments = [] } = useQuery({ queryKey: COMMENTS_KEY, queryFn: fetchComments, refetchInterval: 3000 })
 
   const addMutation = useMutation({
-    mutationFn: async (params: { filePath: string; side: 'deletions' | 'additions'; lineNumber: number; startLineNumber?: number; lineContent: string; body: string }) => {
+    mutationFn: async (params: {
+      scope?: 'file' | 'diff'
+      filePath?: string
+      side?: 'deletions' | 'additions'
+      lineNumber?: number
+      startLineNumber?: number
+      lineContent?: string
+      body: string
+    }) => {
       const res = await fetch('/api/comments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -75,6 +84,13 @@ export function useComments() {
     [addMutation],
   )
 
+  const addScopedComment = useCallback(
+    (scope: 'file' | 'diff', filePath: string, body: string) => {
+      addMutation.mutate({ scope, filePath, body })
+    },
+    [addMutation],
+  )
+
   const removeComment = useCallback(
     (id: string) => {
       removeMutation.mutate(id)
@@ -96,46 +112,12 @@ export function useComments() {
     [editMutation],
   )
 
-  const formatAllComments = useCallback((): string => {
-    if (comments.length === 0) return ''
-
-    const grouped = new Map<string, ReviewComment[]>()
-    for (const comment of comments) {
-      const list = grouped.get(comment.filePath) ?? []
-      list.push(comment)
-      grouped.set(comment.filePath, list)
-    }
-
-    const lines: string[] = ['<code-review-comments>']
-    for (const [filePath, fileComments] of grouped) {
-      lines.push(`<file path="${filePath}">`)
-      for (const comment of fileComments) {
-        const lineLabel =
-          comment.startLineNumber != null && comment.startLineNumber !== comment.lineNumber
-            ? `${comment.startLineNumber}-${comment.lineNumber}`
-            : `${comment.lineNumber}`
-        const statusAttr = comment.status === 'resolved' ? ' status="resolved"' : ''
-        lines.push(`<comment line="${lineLabel}"${statusAttr}>`)
-        const prefix = comment.side === 'additions' ? '+' : '-'
-        const code = comment.lineContent
-          .split('\n')
-          .map((line) => `${prefix} ${line}`)
-          .join('\n')
-        lines.push(`<code>${code}</code>`)
-        lines.push(comment.body)
-        lines.push('</comment>')
-      }
-      lines.push('</file>')
-    }
-    lines.push('</code-review-comments>')
-
-    return lines.join('\n')
-  }, [comments])
+  const formatAllComments = useCallback((): string => formatComments(comments), [comments])
 
   const getAnnotationsForFile = useCallback(
     (filePath: string): DiffLineAnnotation<ReviewComment>[] => {
       return comments
-        .filter((c) => c.filePath === filePath)
+        .filter((c) => c.filePath === filePath && commentScope(c) === 'line')
         .map((c) => ({
           side: c.side,
           lineNumber: c.lineNumber,
@@ -153,6 +135,7 @@ export function useComments() {
   return {
     comments,
     addComment,
+    addScopedComment,
     removeComment,
     editComment,
     resolveComment,
