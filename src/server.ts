@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join, extname, resolve } from 'node:path'
 import { Hono } from 'hono'
 import type { Context } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import { serve } from '@hono/node-server'
 import { getGitDiff, getCustomGitDiff, getRepoName, getBranchName, getFileContent, getBlobContent, getWorktreeFileContent, isImageFile, getTabSizeForFiles, getUntrackedFilePaths } from './git.js'
 import { loadSettings, saveSettings } from './settings.js'
@@ -307,11 +308,12 @@ export function createApp(options: CreateAppOptions) {
     return c.json(updated)
   })
 
-  app.post('/api/comments/import', async (c) => {
-    const contentLength = Number(c.req.header('content-length') ?? 0)
-    if (contentLength > MAX_IMPORT_BYTES) {
-      return c.json({ error: 'Import text is too large' }, 413)
-    }
+  const importBodyLimit = bodyLimit({
+    maxSize: MAX_IMPORT_BYTES,
+    onError: (c) => c.json({ error: 'Import text is too large' }, 413),
+  })
+
+  app.post('/api/comments/import', importBodyLimit, async (c) => {
     const { text } = await c.req.json<{ text: string }>()
     if (typeof text !== 'string' || Buffer.byteLength(text, 'utf-8') > MAX_IMPORT_BYTES) {
       return c.json({ error: 'Import text is too large' }, 413)
