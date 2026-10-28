@@ -8,6 +8,7 @@ import { useDiff } from './hooks/useDiff'
 import { useComments } from './hooks/useComments'
 import { commentScope } from '../commentFormat'
 import { useReview } from './hooks/useReview'
+import { useRounds } from './hooks/useRounds'
 import { useSettings } from './hooks/useSettings'
 import { useViewed } from './hooks/useViewed'
 import { useFullDiffs, fileKey } from './hooks/useFullDiffs'
@@ -40,6 +41,7 @@ export function App() {
   const { comments, addComment, addScopedComment, removeComment, editComment, copyAllComments } =
     useComments()
   const { meta: reviewMeta } = useReview()
+  const { rounds, submitReview, submitting } = useRounds()
   const [activeFile, setActiveFile] = useState<string | null>(null)
   const [sidebar, setSidebar] = useState(() => SidebarStorage.load())
   const maxSidebarWidth = Math.max(SidebarStorage.minSize, useWindowSize({ factor: 0.5 }))
@@ -211,6 +213,9 @@ export function App() {
         browser={settings.browser}
         customMode={customMode}
         reviewMeta={reviewMeta}
+        rounds={rounds}
+        submitting={submitting}
+        onSubmitReview={submitReview}
         onDiffStyleChange={(style) => updateSettings({ diffStyle: style })}
         onDiffOptionsChange={(options) => updateSettings(options)}
         onDefaultTabSizeChange={(size) => updateSettings({ defaultTabSize: size })}

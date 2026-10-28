@@ -7,6 +7,8 @@ import { loadSettings, saveSettings } from './settings.js'
 import { InMemoryCommentStore } from './comments.js'
 import type { CommentStore } from './comments.js'
 import { importComments } from './commentImport.js'
+import { InMemoryRoundsStore, ReviewRounds, parseAfter, parseWaitTimeout } from './rounds.js'
+import type { RoundsStore } from './rounds.js'
 import { isSafePath } from './path.js'
 import type { ReviewComment, ReviewMeta } from './types.js'
 
@@ -98,14 +100,16 @@ export interface CreateAppOptions {
   clientDir: string
   customDiffArgs?: string[]
   commentStore?: CommentStore
+  roundsStore?: RoundsStore
   reviewMeta?: ReviewMeta
 }
 
 export function createApp(options: CreateAppOptions) {
-  const { clientDir, customDiffArgs, commentStore, reviewMeta } = options
+  const { clientDir, customDiffArgs, commentStore, roundsStore, reviewMeta } = options
   const app = new Hono()
   const isCustomMode = !!customDiffArgs
   const store = commentStore ?? new InMemoryCommentStore()
+  const rounds = new ReviewRounds(roundsStore ?? new InMemoryRoundsStore())
   const meta: ReviewMeta = reviewMeta ?? { persisted: false, restoredCount: 0 }
   const viewedFiles = new Map<string, string>()
 
@@ -206,6 +210,31 @@ export function createApp(options: CreateAppOptions) {
 
   app.get('/api/review', (c) => {
     return c.json(meta)
+  })
+
+  app.get('/api/rounds', (c) => {
+    return c.json(rounds.get())
+  })
+
+  app.post('/api/rounds/submit', (c) => {
+    return c.json(rounds.submit())
+  })
+
+  app.get('/api/rounds/wait', async (c) => {
+    const after = parseAfter(c.req.query('after'))
+    const timeout = parseWaitTimeout(c.req.query('timeout'))
+    return c.json(await rounds.wait(after, timeout, c.req.raw.signal))
+  })
+
+  app.post('/api/rounds/addressed', async (c) => {
+    const body = await c.req.json().catch(() => null)
+    const round = body?.round
+    if (typeof round !== 'number' || !Number.isInteger(round) || round < 0) {
+      return c.json({ error: 'round must be a non-negative integer' }, 400)
+    }
+    const state = rounds.markAddressed(round)
+    if (!state) return c.json({ error: 'round is above the current round' }, 400)
+    return c.json(state)
   })
 
   app.get('/api/comments', async (c) => {
@@ -331,6 +360,7 @@ export function startServer(options: {
   clientDir: string
   customDiffArgs?: string[]
   commentStore?: CommentStore
+  roundsStore?: RoundsStore
   reviewMeta?: ReviewMeta
 }): Promise<{ port: number }> {
   const app = createApp(options)

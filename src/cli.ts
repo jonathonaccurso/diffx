@@ -11,6 +11,7 @@ import { startServer } from './server.js'
 import { loadSettings } from './settings.js'
 import { openReviewStore } from './reviewStore.js'
 import type { CommentStore } from './comments.js'
+import type { RoundsStore } from './rounds.js'
 import type { ReviewMeta } from './types.js'
 
 const { values, positionals } = parseArgs({
@@ -75,12 +76,14 @@ const resolvedClientDir = existsSync(clientDir)
   : resolve(process.cwd(), 'dist/client')
 
 let commentStore: CommentStore | undefined
+let roundsStore: RoundsStore | undefined
 let reviewMeta: ReviewMeta | undefined
 if (values.persist) {
   const identity = resolveReviewIdentity(customDiffArgs)
   const reviewsDir = join(homedir(), '.config', 'diffx', 'reviews')
   const { store, restoredCount, file } = openReviewStore(reviewsDir, identity)
   commentStore = store
+  roundsStore = store
   reviewMeta = { persisted: true, file, identity, restoredCount }
 }
 
@@ -90,6 +93,7 @@ const { port: actualPort } = await startServer({
   clientDir: resolvedClientDir,
   customDiffArgs,
   commentStore,
+  roundsStore,
   reviewMeta,
 })
 

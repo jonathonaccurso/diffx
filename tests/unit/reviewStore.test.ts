@@ -1,8 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openReviewStore, reviewIdentityId } from '../../src/reviewStore.js'
+import { createApp } from '../../src/server.js'
 import type { ReviewComment, ReviewIdentity } from '../../src/types.js'
 
 let reviewsDir: string
@@ -84,5 +85,82 @@ describe('FileCommentStore / openReviewStore', () => {
     // A moved branch opens a new, empty review rather than reusing the old file.
     const opened = openReviewStore(reviewsDir, movedIdentity)
     expect(opened.restoredCount).toBe(0)
+  })
+})
+
+describe('review rounds in the review file', () => {
+  it('starts at the defaults and creates no file', () => {
+    const opened = openReviewStore(reviewsDir, identity)
+
+    expect(opened.store.getRounds()).toEqual({ round: 0, submittedAt: null, addressedRound: 0, addressedAt: null })
+    expect(existsSync(opened.file)).toBe(false)
+  })
+
+  it('saves the rounds next to the comments and restores them', async () => {
+    const opened = openReviewStore(reviewsDir, identity)
+    await opened.store.add(makeComment())
+    opened.store.setRounds({ round: 2, submittedAt: 1000, addressedRound: 1, addressedAt: 900 })
+
+    const raw = JSON.parse(readFileSync(opened.file, 'utf-8'))
+    expect(raw.comments).toHaveLength(1)
+    expect(raw.rounds).toEqual({ round: 2, submittedAt: 1000, addressedRound: 1, addressedAt: 900 })
+
+    const reloaded = openReviewStore(reviewsDir, identity)
+    expect(reloaded.store.getRounds()).toEqual(raw.rounds)
+    expect(reloaded.restoredCount).toBe(1)
+  })
+
+  it('keeps the file for a submitted review that has no comments', () => {
+    const opened = openReviewStore(reviewsDir, identity)
+    opened.store.setRounds({ round: 1, submittedAt: 1000, addressedRound: 0, addressedAt: null })
+
+    expect(existsSync(opened.file)).toBe(true)
+    expect(openReviewStore(reviewsDir, identity).store.getRounds().round).toBe(1)
+  })
+
+  it('keeps the rounds when the last comment is removed', async () => {
+    const opened = openReviewStore(reviewsDir, identity)
+    const added = await opened.store.add(makeComment())
+    opened.store.setRounds({ round: 1, submittedAt: 1000, addressedRound: 0, addressedAt: null })
+
+    await opened.store.remove(added.id)
+
+    expect(openReviewStore(reviewsDir, identity).store.getRounds().round).toBe(1)
+  })
+
+  it('starts at the defaults for a file written without rounds', () => {
+    const opened = openReviewStore(reviewsDir, identity)
+    writeFileSync(opened.file, JSON.stringify({ version: 1, identity, comments: [makeComment()] }))
+
+    const reloaded = openReviewStore(reviewsDir, identity)
+
+    expect(reloaded.restoredCount).toBe(1)
+    expect(reloaded.store.getRounds()).toEqual({ round: 0, submittedAt: null, addressedRound: 0, addressedAt: null })
+  })
+
+  it('falls back to the defaults for a malformed rounds field', () => {
+    const opened = openReviewStore(reviewsDir, identity)
+    writeFileSync(
+      opened.file,
+      JSON.stringify({ version: 1, identity, comments: [], rounds: { round: 'x', addressedRound: 5 } }),
+    )
+
+    expect(openReviewStore(reviewsDir, identity).store.getRounds().round).toBe(0)
+  })
+
+  it('serves the stored rounds through the app and saves a submit', async () => {
+    const opened = openReviewStore(reviewsDir, identity)
+    const app = createApp({
+      clientDir: reviewsDir,
+      commentStore: opened.store,
+      roundsStore: opened.store,
+    })
+
+    await app.request('/api/rounds/submit', { method: 'POST' })
+
+    const reloaded = openReviewStore(reviewsDir, identity)
+    expect(reloaded.store.getRounds().round).toBe(1)
+    const res = await createApp({ clientDir: reviewsDir, roundsStore: reloaded.store }).request('/api/rounds')
+    expect((await res.json()).round).toBe(1)
   })
 })

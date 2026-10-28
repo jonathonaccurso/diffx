@@ -33,11 +33,21 @@ export interface ReviewIdentity {
   head?: string // resolved HEAD SHA; present when the diff includes the working tree or the index
 }
 
+// The submit state of a review: how many times the reviewer has sent it to
+// the agent, and the last round the agent reported as handled.
+export interface RoundsState {
+  round: number
+  submittedAt: number | null
+  addressedRound: number
+  addressedAt: number | null
+}
+
 // The on-disk shape of one review file
 export interface ReviewFile {
   version: 1
   identity: ReviewIdentity
   comments: ReviewComment[]
+  rounds?: RoundsState
 }
 
 // The result of one import
