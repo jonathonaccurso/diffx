@@ -30,6 +30,7 @@ interface DiffViewerProps {
   ) => void
   onDeleteComment: (id: string) => void
   onEditComment: (id: string, body: string) => void
+  onReplyComment: (id: string, body: string) => void
 }
 
 export function nextUnviewedFile(
@@ -60,6 +61,7 @@ export const DiffViewer = memo(function DiffViewer({
   onAddComment,
   onDeleteComment,
   onEditComment,
+  onReplyComment,
 }: DiffViewerProps) {
   const sortedFiles = useMemo(() => {
     return [...files].sort((a, b) => {
@@ -109,7 +111,7 @@ export const DiffViewer = memo(function DiffViewer({
     <div className="diff-viewer">
       <div className="diff-comments">
         {diffComments.map((comment) => (
-          <CommentBubble key={comment.id} comment={comment} onDelete={onDeleteComment} onEdit={onEditComment} />
+          <CommentBubble key={comment.id} comment={comment} onDelete={onDeleteComment} onEdit={onEditComment} onReply={onReplyComment} />
         ))}
         {composingDiffComment ? (
           <CommentForm
@@ -162,6 +164,7 @@ export const DiffViewer = memo(function DiffViewer({
             onAddComment={onAddComment}
             onDeleteComment={onDeleteComment}
             onEditComment={onEditComment}
+            onReplyComment={onReplyComment}
           />
         )
       })}

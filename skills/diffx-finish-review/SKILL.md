@@ -33,12 +33,18 @@ The response is a JSON array of comment objects:
     "body": "Rename x to parsedToken for clarity",
     "status": "open",
     "createdAt": 1234567890,
-    "replies": []
+    "replies": [
+      { "id": "uuid", "body": "Why this name?", "createdAt": 1234567899, "author": "reviewer" }
+    ]
   }
 ]
 ```
 
+Each reply has an `author` of `"reviewer"` or `"agent"`. A reply without an `author` came from the agent.
+
 ### 2. Process each comment
+
+Skip an open comment whose last reply has `"author": "agent"`: it is waiting for the reviewer. Handle an open comment that has no reply, or whose last reply is from the reviewer. A reviewer reply is new input and needs a fresh answer, even if you answered the comment before. Read the whole thread before you reply.
 
 For each comment with `"status": "open"`, first determine the intent — is it a **change request** or a **question**?
 
@@ -53,7 +59,7 @@ For each comment with `"status": "open"`, first determine the intent — is it a
 # Reply to the comment
 curl -s -X POST http://localhost:<port>/api/comments/<id>/replies \
   -H "Content-Type: application/json" \
-  -d '{"body": "Done. Renamed x to parsedToken."}'
+  -d '{"body": "Done. Renamed x to parsedToken.", "author": "agent"}'
 
 # Mark as resolved
 curl -s -X PUT http://localhost:<port>/api/comments/<id> \
@@ -68,7 +74,7 @@ Just reply with an answer. Do **not** modify code or resolve the comment — lea
 ```bash
 curl -s -X POST http://localhost:<port>/api/comments/<id>/replies \
   -H "Content-Type: application/json" \
-  -d '{"body": "A Map would work too, but we use a plain object here because..."}'
+  -d '{"body": "A Map would work too, but we use a plain object here because...", "author": "agent"}'
 ```
 
 The `side` field tells you whether the comment is on an added line (`additions`) or a deleted line (`deletions`).
@@ -77,7 +83,7 @@ The `side` field tells you whether the comment is on an added line (`additions`)
 
 - If a comment is ambiguous, reply to ask for clarification rather than guessing.
 - If multiple comments interact (e.g., a rename that affects several places), handle them together.
-- If there are no open comments, tell the user there's nothing to process. Still report the round as handled.
+- If there are no open comments waiting for the agent, tell the user there's nothing to process. Still report the round as handled.
 
 ### 4. Report the round as handled
 

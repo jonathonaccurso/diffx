@@ -1,7 +1,16 @@
 import type { ReviewComment } from './types.js'
+import { replyAuthor } from './threadState.js'
 
 export function commentScope(comment: ReviewComment): 'line' | 'file' | 'diff' {
   return comment.scope ?? 'line'
+}
+
+function replyLines(comment: ReviewComment): string[] {
+  return (comment.replies ?? []).flatMap((reply) => [
+    `<reply author="${replyAuthor(reply)}">`,
+    reply.body,
+    '</reply>',
+  ])
 }
 
 // Serializes comments into the "Copy comments" export that
@@ -13,7 +22,7 @@ export function formatComments(comments: ReviewComment[]): string {
   const statusOf = (c: ReviewComment) => (c.status === 'resolved' ? ' status="resolved"' : '')
 
   for (const comment of comments.filter((c) => commentScope(c) === 'diff')) {
-    lines.push(`<comment scope="diff"${statusOf(comment)}>`, comment.body, '</comment>')
+    lines.push(`<comment scope="diff"${statusOf(comment)}>`, comment.body, ...replyLines(comment), '</comment>')
   }
 
   const grouped = new Map<string, ReviewComment[]>()
@@ -28,7 +37,7 @@ export function formatComments(comments: ReviewComment[]): string {
     lines.push(`<file path="${filePath}">`)
     for (const comment of fileComments) {
       if (commentScope(comment) === 'file') {
-        lines.push(`<comment scope="file"${statusOf(comment)}>`, comment.body, '</comment>')
+        lines.push(`<comment scope="file"${statusOf(comment)}>`, comment.body, ...replyLines(comment), '</comment>')
         continue
       }
       const lineLabel =
@@ -43,6 +52,7 @@ export function formatComments(comments: ReviewComment[]): string {
         .join('\n')
       lines.push(`<code>${code}</code>`)
       lines.push(comment.body)
+      lines.push(...replyLines(comment))
       lines.push('</comment>')
     }
     lines.push('</file>')

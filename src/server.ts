@@ -10,7 +10,7 @@ import { importComments } from './commentImport.js'
 import { InMemoryRoundsStore, ReviewRounds, parseAfter, parseWaitTimeout } from './rounds.js'
 import type { RoundsStore } from './rounds.js'
 import { isSafePath } from './path.js'
-import type { ReviewComment, ReviewMeta } from './types.js'
+import type { CommentReply, ReviewComment, ReviewMeta } from './types.js'
 
 const MAX_IMPORT_BYTES = 1_000_000
 
@@ -309,11 +309,15 @@ export function createApp(options: CreateAppOptions) {
 
   app.post('/api/comments/:id/replies', async (c) => {
     const commentId = c.req.param('id')
-    const { body } = await c.req.json()
-    const reply = {
+    const { body, author } = await c.req.json()
+    if (author !== undefined && author !== 'reviewer' && author !== 'agent') {
+      return c.json({ error: "Reply author must be 'reviewer' or 'agent'" }, 400)
+    }
+    const reply: CommentReply = {
       id: crypto.randomUUID(),
       body,
       createdAt: Date.now(),
+      ...(author ? { author } : {}),
     }
     const updated = await store.addReply(commentId, reply)
     if (!updated) return c.json({ error: 'Comment not found' }, 404)

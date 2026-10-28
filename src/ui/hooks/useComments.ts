@@ -63,6 +63,22 @@ export function useComments() {
     },
   })
 
+  const replyMutation = useMutation({
+    mutationFn: async ({ id, body }: { id: string; body: string }) => {
+      const res = await fetch(`/api/comments/${id}/replies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body, author: 'reviewer' }),
+      })
+      return res.json() as Promise<ReviewComment>
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<ReviewComment[]>(COMMENTS_KEY, (prev = []) =>
+        prev.map((c) => (c.id === updated.id ? updated : c)),
+      )
+    },
+  })
+
   const addComment = useCallback(
     (
       filePath: string,
@@ -105,6 +121,13 @@ export function useComments() {
     [editMutation],
   )
 
+  const replyToComment = useCallback(
+    (id: string, body: string) => {
+      replyMutation.mutate({ id, body })
+    },
+    [replyMutation],
+  )
+
   const resolveComment = useCallback(
     (id: string) => {
       editMutation.mutate({ id, status: 'resolved' })
@@ -138,6 +161,7 @@ export function useComments() {
     addScopedComment,
     removeComment,
     editComment,
+    replyToComment,
     resolveComment,
     getAnnotationsForFile,
     formatAllComments,

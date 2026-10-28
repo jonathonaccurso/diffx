@@ -1,7 +1,10 @@
+export type ReplyAuthor = 'reviewer' | 'agent'
+
 export interface CommentReply {
   id: string
   body: string
   createdAt: number
+  author?: ReplyAuthor // absent means 'agent'
 }
 
 export interface ReviewComment {

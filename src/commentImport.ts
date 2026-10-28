@@ -12,12 +12,19 @@ export interface ParsedComment {
   status: 'open' | 'resolved'
 }
 
+// Exports append `<reply author="...">` blocks after a comment's body. They
+// are not imported, and must not leak into the body.
+function stripReplies(body: string): string {
+  return body.replace(/(?:\n<reply author="[^"]*">\n[\s\S]*?\n<\/reply>)+$/, '')
+}
+
 // One `<comment line="N|A-B" [status="resolved"]>` block, parsed from the
 // text between its opening and closing tags (excluding the tags themselves).
 function parseCommentBlock(filePath: string, lineLabel: string, statusAttr: string | undefined, inner: string): ParsedComment {
   const codeMatch = inner.match(/^<code>([\s\S]*?)<\/code>\n([\s\S]*)$/)
   if (!codeMatch) throw new Error('malformed comment block: missing <code> block')
-  const [, code, body] = codeMatch
+  const [, code, rawBody] = codeMatch
+  const body = stripReplies(rawBody)
 
   const codeLines = code.split('\n')
   const prefixChar = codeLines[0]?.[0]
@@ -72,7 +79,7 @@ export function parseCommentExport(text: string): { comments: ParsedComment[]; u
         side: 'additions',
         lineNumber: 0,
         lineContent: '',
-        body: m[3],
+        body: stripReplies(m[3]),
         status: m[2] === 'resolved' ? 'resolved' : 'open',
       })
     }

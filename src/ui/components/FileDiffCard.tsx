@@ -33,6 +33,7 @@ interface FileDiffCardProps {
   ) => void
   onDeleteComment: (id: string) => void
   onEditComment: (id: string, body: string) => void
+  onReplyComment: (id: string, body: string) => void
 }
 
 export const FileDiffCard = memo(function FileDiffCard({
@@ -50,6 +51,7 @@ export const FileDiffCard = memo(function FileDiffCard({
   onAddComment,
   onDeleteComment,
   onEditComment,
+  onReplyComment,
 }: FileDiffCardProps) {
   const [composingFileComment, setComposingFileComment] = useState(false)
   const [pending, setPending] = useState<PendingComment | null>(null)
@@ -103,7 +105,7 @@ export const FileDiffCard = memo(function FileDiffCard({
     <div className={`file-diff-card ${viewed ? 'file-diff-viewed' : ''}`} id={id}>
       <div className="file-comments">
         {fileComments.map((comment) => (
-          <CommentBubble key={comment.id} comment={comment} onDelete={onDeleteComment} onEdit={onEditComment} />
+          <CommentBubble key={comment.id} comment={comment} onDelete={onDeleteComment} onEdit={onEditComment} onReply={onReplyComment} />
         ))}
         {composingFileComment && (
           <CommentForm
@@ -201,6 +203,7 @@ export const FileDiffCard = memo(function FileDiffCard({
                   comment={annotation.metadata as ReviewComment}
                   onDelete={onDeleteComment}
                   onEdit={onEditComment}
+                  onReply={onReplyComment}
                 />
               )
             }}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { UserCircle, CheckCircle2, Bot } from 'lucide-react'
 import type { ReviewComment } from '../../types'
+import { replyAuthor } from '../../threadState'
 import { timeAgo } from '../utils'
 import { CommentForm } from './CommentForm'
 
@@ -8,9 +9,10 @@ interface CommentBubbleProps {
   comment: ReviewComment
   onDelete: (id: string) => void
   onEdit: (id: string, body: string) => void
+  onReply: (id: string, body: string) => void
 }
 
-export function CommentBubble({ comment, onDelete, onEdit }: CommentBubbleProps) {
+export function CommentBubble({ comment, onDelete, onEdit, onReply }: CommentBubbleProps) {
   const [, setTick] = useState(0)
   // Editing state is kept in this component instance rather than in a
   // sibling/free-standing form, for the same reason FileDiffCard keeps its
@@ -19,6 +21,7 @@ export function CommentBubble({ comment, onDelete, onEdit }: CommentBubbleProps)
   // rendered content is windowed), so the draft survives the file scrolling
   // out of view and back.
   const [editing, setEditing] = useState(false)
+  const [replying, setReplying] = useState(false)
   const isResolved = comment.status === 'resolved'
   const isMultiLine = comment.startLineNumber != null && comment.startLineNumber !== comment.lineNumber
 
@@ -76,17 +79,42 @@ export function CommentBubble({ comment, onDelete, onEdit }: CommentBubbleProps)
       )}
       {comment.replies?.length > 0 && (
         <div className="comment-replies">
-          {comment.replies.map((reply) => (
-            <div key={reply.id} className="comment-reply">
-              <div className="comment-reply-header">
-                <Bot size={16} className="comment-reply-avatar" />
-                <span className="comment-bubble-time">{timeAgo(reply.createdAt)}</span>
+          {comment.replies.map((reply) => {
+            const author = replyAuthor(reply)
+            return (
+              <div key={reply.id} className="comment-reply" data-author={author}>
+                <div className="comment-reply-header">
+                  {author === 'reviewer' ? (
+                    <UserCircle size={16} className="comment-reply-avatar comment-reply-avatar-reviewer" />
+                  ) : (
+                    <Bot size={16} className="comment-reply-avatar" />
+                  )}
+                  <span className="comment-reply-author">{author === 'reviewer' ? 'Reviewer' : 'Agent'}</span>
+                  <span className="comment-bubble-time">{timeAgo(reply.createdAt)}</span>
+                </div>
+                <div className="comment-reply-body">{reply.body}</div>
               </div>
-              <div className="comment-reply-body">{reply.body}</div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
+      <div className="comment-reply-box">
+        {replying ? (
+          <CommentForm
+            placeholder="Reply..."
+            submitLabel="Reply"
+            onSubmit={(body) => {
+              onReply(comment.id, body)
+              setReplying(false)
+            }}
+            onCancel={() => setReplying(false)}
+          />
+        ) : (
+          <button className="comment-reply-open" onClick={() => setReplying(true)}>
+            Reply
+          </button>
+        )}
+      </div>
     </div>
   )
 }

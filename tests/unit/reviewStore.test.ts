@@ -50,6 +50,19 @@ describe('FileCommentStore / openReviewStore', () => {
     expect(comments[0].body).toBe('a comment')
   })
 
+  it('keeps reply authors across a reload and loads replies that have none', async () => {
+    const opened = openReviewStore(reviewsDir, identity)
+    await opened.store.add(makeComment())
+    await opened.store.addReply('c1', { id: 'r1', body: 'old agent reply', createdAt: 1 })
+    await opened.store.addReply('c1', { id: 'r2', body: 'from the reviewer', createdAt: 2, author: 'reviewer' })
+
+    const reloaded = openReviewStore(reviewsDir, identity)
+
+    const [comment] = await reloaded.store.getAll()
+    expect(comment.replies.map((r) => r.author)).toEqual([undefined, 'reviewer'])
+    expect(readFileSync(opened.file, 'utf-8')).not.toContain('"author": "agent"')
+  })
+
   it('yields restoredCount 0 and creates no file when nothing has been stored', () => {
     const opened = openReviewStore(reviewsDir, identity)
 

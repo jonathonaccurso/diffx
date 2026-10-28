@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { importComments, parseCommentExport } from '../../src/commentImport.js'
 import { InMemoryCommentStore } from '../../src/comments.js'
+import { formatComments } from '../../src/commentFormat.js'
 import type { ReviewComment } from '../../src/types.js'
 
 function exportOf(...blocks: string[]): string {
@@ -166,5 +167,34 @@ describe('importComments', () => {
     expect(parsed.unreadable).toBe(0)
     expect(parsed.comments).toHaveLength(1)
     expect(parsed.comments[0].status).toBe('resolved')
+  })
+})
+
+describe('reply authors in the export', () => {
+  const replies = [
+    { id: 'r1', body: 'Fixed it.', createdAt: 1 },
+    { id: 'r2', body: 'Still wrong.', createdAt: 2, author: 'reviewer' as const },
+  ]
+
+  it('writes each reply with its author, defaulting to agent', () => {
+    const text = formatComments([
+      makeStoredComment({ replies }),
+      makeStoredComment({ id: 'c2', scope: 'file', body: 'file note', replies: [replies[1]] }),
+      makeStoredComment({ id: 'c3', scope: 'diff', filePath: '', body: 'diff note', replies: [replies[0]] }),
+    ])
+    expect(text).toContain('<reply author="agent">\nFixed it.\n</reply>')
+    expect(text).toContain('<reply author="reviewer">\nStill wrong.\n</reply>')
+    expect(text.match(/<reply author="/g)).toHaveLength(4)
+  })
+
+  it('leaves replies out of the imported body', async () => {
+    const text = formatComments([
+      makeStoredComment({ body: 'line note', replies }),
+      makeStoredComment({ id: 'c2', scope: 'file', body: 'file note', replies }),
+    ])
+    const store = new InMemoryCommentStore()
+    const result = await importComments(store, text)
+    expect(result.imported).toBe(2)
+    expect(result.comments.map((c) => c.body).sort()).toEqual(['file note', 'line note'])
   })
 })

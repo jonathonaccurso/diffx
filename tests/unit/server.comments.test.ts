@@ -108,3 +108,56 @@ describe('PUT /api/comments/:id', () => {
     expect(updated.editedAt).toBeUndefined()
   })
 })
+
+describe('POST /api/comments/:id/replies', () => {
+  async function reply(app: ReturnType<typeof createApp>, id: string, payload: object) {
+    return app.request(`/api/comments/${id}/replies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+  }
+
+  it('stores a reply without an author as it always has', async () => {
+    const app = createApp({ clientDir: fixtureClientDir() })
+    const created = await createComment(app)
+
+    const res = await reply(app, created.id, { body: 'done' })
+
+    expect(res.status).toBe(200)
+    const updated = await res.json()
+    expect(updated.replies).toHaveLength(1)
+    expect(updated.replies[0].body).toBe('done')
+    expect(updated.replies[0].author).toBeUndefined()
+  })
+
+  it.each(['reviewer', 'agent'])('stores author %s', async (author) => {
+    const app = createApp({ clientDir: fixtureClientDir() })
+    const created = await createComment(app)
+
+    const res = await reply(app, created.id, { body: 'hello', author })
+
+    expect(res.status).toBe(200)
+    const all = await (await app.request('/api/comments')).json()
+    expect(all[0].replies[0].author).toBe(author)
+  })
+
+  it.each(['bot', '', null, 42])('rejects author %j with 400 and stores nothing', async (author) => {
+    const app = createApp({ clientDir: fixtureClientDir() })
+    const created = await createComment(app)
+
+    const res = await reply(app, created.id, { body: 'hello', author })
+
+    expect(res.status).toBe(400)
+    const all = await (await app.request('/api/comments')).json()
+    expect(all[0].replies).toEqual([])
+  })
+
+  it('returns 404 for an unknown comment', async () => {
+    const app = createApp({ clientDir: fixtureClientDir() })
+
+    const res = await reply(app, 'missing', { body: 'hello', author: 'reviewer' })
+
+    expect(res.status).toBe(404)
+  })
+})

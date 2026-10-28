@@ -38,7 +38,7 @@ export function App() {
     staged: settings.staged,
     untracked: settings.untracked,
   })
-  const { comments, addComment, addScopedComment, removeComment, editComment, copyAllComments } =
+  const { comments, addComment, addScopedComment, removeComment, editComment, replyToComment, copyAllComments } =
     useComments()
   const { meta: reviewMeta } = useReview()
   const { rounds, submitReview, submitting } = useRounds()
@@ -267,6 +267,7 @@ export function App() {
               onAddComment={addComment}
               onDeleteComment={removeComment}
               onEditComment={editComment}
+              onReplyComment={replyToComment}
             />
           </Virtualizer>
         </main>

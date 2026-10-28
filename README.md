@@ -43,8 +43,8 @@ Examples:
 - **Syntax highlighting** — Powered by Shiki with GitHub themes
 - **File tree** — Hierarchical file browser with search filter and file change-type icons
 - **Inline comments** — Click the `+` button on any line to add a review comment
-- **Comment replies** — AI agents can reply to comments via API, displayed with bot avatar in the UI
-- **Comment status tracker** — Sidebar widget showing open, replied, and resolved comment counts with click-to-navigate links
+- **Comment replies**: reply inside any thread from the UI; agents reply via API. Every reply is labelled by author, the reviewer with a user avatar and the agent with a bot avatar
+- **Comment status tracker**: sidebar widget counting threads that wait for the agent, wait for you, or are resolved, with click-to-navigate links
 - **Submit review**: send the review to a waiting agent with one click; the agent blocks on a wait endpoint until you submit
 - **Copy comments** — One-click copy all comments as structured XML for AI coding agents
 - **Image preview** — Side-by-side comparison for added, modified, and deleted images
@@ -105,6 +105,25 @@ done
 ```
 
 A wait that times out returns the unchanged state, so the loop asks again. If the returned `round` is lower than `after`, diffx restarted without `--persist` and the round count began again.
+
+## Replies and Thread States
+
+Each reply has an `author` of `reviewer` or `agent`. A reply without one counts as `agent`, so existing review files and API clients keep working. Send a reply with:
+
+```bash
+curl -s -X POST http://localhost:<port>/api/comments/<id>/replies \
+  -H "Content-Type: application/json" \
+  -d '{"body": "Done.", "author": "agent"}'
+```
+
+Any other `author` value gets a 400. Replies posted from the UI carry `"author": "reviewer"`, and `--persist` keeps the author in the review file.
+
+An open thread is in one of two states, and the comment tracker counts and marks them:
+
+- **Waiting for agent**: the comment has no reply, or its last reply is from the reviewer.
+- **Waiting for you**: the last reply is from the agent.
+
+A resolved thread is counted as resolved whatever its replies say. "Copy comments" writes each reply as `<reply author="agent">` or `<reply author="reviewer">` after the comment body. Import skips these blocks.
 
 ## Agent Skills
 
