@@ -77,8 +77,30 @@ The `side` field tells you whether the comment is on an added line (`additions`)
 
 - If a comment is ambiguous, reply to ask for clarification rather than guessing.
 - If multiple comments interact (e.g., a rename that affects several places), handle them together.
-- If there are no open comments, tell the user there's nothing to process.
+- If there are no open comments, tell the user there's nothing to process. Still report the round as handled.
 
-### 4. Summary
+### 4. Report the round as handled
+
+If the user sent the review with **Submit review**, tell diffx which round you handled so the UI shows it as addressed. Use the `round` the wait returned:
+
+```bash
+curl -s -X POST http://localhost:<port>/api/rounds/addressed \
+  -H "Content-Type: application/json" \
+  -d '{"round": <round>}'
+```
+
+The server answers 400 when `<round>` is above its current round.
+
+### 5. Wait for the next submit
+
+The user may read your replies and submit again. Wait for the next round in the background, starting from the round you just handled:
+
+```bash
+curl -s "http://localhost:<port>/api/rounds/wait?after=<round>&timeout=300"
+```
+
+Run it with `run_in_background: true`. The call returns the state after at most 300 seconds. If `round` is above `<round>`, the user submitted again, so go back to step 1. If it is unchanged, the wait timed out, so run the same call again. Stop when the user says the review is done.
+
+### 6. Summary
 
 After processing all comments, give a brief summary of what you did: how many changes were applied, how many questions were answered.
