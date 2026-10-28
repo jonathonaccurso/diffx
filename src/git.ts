@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { basename, join, resolve } from 'node:path'
-import { readFileSync, lstatSync, readlinkSync } from 'node:fs'
+import { basename, dirname, join, resolve, sep } from 'node:path'
+import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readlinkSync, realpathSync } from 'node:fs'
 import { isSafePath } from './path.js'
 import { parseSync as parseEditorConfig, type ProcessedFileConfig } from 'editorconfig'
 import type { ReviewIdentity } from './types.js'
@@ -14,17 +14,45 @@ export function isImageFile(filePath: string): boolean {
   return IMAGE_EXTENSIONS.has(ext)
 }
 
-function isBinaryFile(absolutePath: string): boolean {
+type WorktreeEntry = { type: 'symlink'; target: string } | { type: 'file'; content: Buffer }
+
+// Git records a symlink as its link text. Other non-regular entries are never
+// opened, since a FIFO would block the server; they and escaping paths give null.
+function readWorktreeEntry(root: string, relativePath: string): WorktreeEntry | null {
   try {
-    const buffer = readFileSync(absolutePath)
-    const bytesToCheck = Math.min(buffer.length, 8192)
-    for (let i = 0; i < bytesToCheck; i++) {
-      if (buffer[i] === 0) return true
+    const absolute = resolve(root, relativePath)
+    const realRoot = realpathSync(root)
+    const realParent = realpathSync(dirname(absolute))
+    if (realParent !== realRoot && !realParent.startsWith(realRoot + sep)) {
+      return null
     }
-    return false
+    const stats = lstatSync(absolute)
+    if (stats.isSymbolicLink()) {
+      return { type: 'symlink', target: readlinkSync(absolute, 'utf-8') }
+    }
+    if (!stats.isFile()) {
+      return null
+    }
+    // The entry can be swapped for a FIFO or link after the lstat. O_NONBLOCK
+    // and O_NOFOLLOW keep the open from blocking, and the fstat re-checks the type.
+    const fd = openSync(absolute, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW)
+    try {
+      if (!fstatSync(fd).isFile()) return null
+      return { type: 'file', content: readFileSync(fd) }
+    } finally {
+      closeSync(fd)
+    }
   } catch {
-    return true
+    return null
   }
+}
+
+function isBinaryContent(buffer: Buffer): boolean {
+  const bytesToCheck = Math.min(buffer.length, 8192)
+  for (let i = 0; i < bytesToCheck; i++) {
+    if (buffer[i] === 0) return true
+  }
+  return false
 }
 
 export function getFileContent(filePath: string, version: 'old' | 'new'): Buffer | null {
@@ -32,13 +60,10 @@ export function getFileContent(filePath: string, version: 'old' | 'new'): Buffer
   if (!isSafePath(filePath, root)) {
     return null
   }
-  const resolved = resolve(root, filePath)
   if (version === 'new') {
-    try {
-      return readFileSync(resolved)
-    } catch {
-      return null
-    }
+    const entry = readWorktreeEntry(root, filePath)
+    if (!entry) return null
+    return entry.type === 'symlink' ? Buffer.from(entry.target, 'utf-8') : entry.content
   }
   // old version: try staged first, then HEAD
   try {
@@ -66,22 +91,9 @@ export function getWorktreeFileContent(filePath: string): string | null {
   if (!isSafePath(filePath, root)) {
     return null
   }
-  const resolved = resolve(root, filePath)
-  try {
-    // Match git's notion of the worktree blob: for a symlink that is the
-    // target string, never the contents of the file it points at (which
-    // could be outside the repository).
-    const stats = lstatSync(resolved)
-    if (stats.isSymbolicLink()) {
-      return readlinkSync(resolved, 'utf-8')
-    }
-    if (!stats.isFile()) {
-      return null
-    }
-    return readFileSync(resolved, 'utf-8')
-  } catch {
-    return null
-  }
+  const entry = readWorktreeEntry(root, filePath)
+  if (!entry) return null
+  return entry.type === 'symlink' ? entry.target : entry.content.toString('utf-8')
 }
 
 export function isGitRepo(): boolean {
@@ -181,8 +193,21 @@ function getUntrackedFilesDiff(): string {
   const patches: string[] = []
 
   for (const file of files) {
-    const absolutePath = join(root, file)
-    if (isBinaryFile(absolutePath)) {
+    const entry = readWorktreeEntry(root, file)
+    if (!entry) continue
+    if (entry.type === 'symlink') {
+      const targetLines = entry.target.split('\n')
+      patches.push([
+        `diff --git a/${file} b/${file}`,
+        'new file mode 120000',
+        'index 0000000..0000001',
+        '--- /dev/null',
+        `+++ b/${file}`,
+        `@@ -0,0 +1${targetLines.length > 1 ? `,${targetLines.length}` : ''} @@`,
+        ...targetLines.map((l) => `+${l}`),
+        '\\ No newline at end of file',
+      ].join('\n'))
+    } else if (isBinaryContent(entry.content)) {
       const patch = [
         `diff --git a/${file} b/${file}`,
         'new file mode 100644',
@@ -191,23 +216,18 @@ function getUntrackedFilesDiff(): string {
       ].join('\n')
       patches.push(patch)
     } else {
-      try {
-        const content = readFileSync(absolutePath, 'utf-8')
-        const lines = content.split('\n')
-        const diffLines = lines.map((l: string) => `+${l}`)
-        const patch = [
-          `diff --git a/${file} b/${file}`,
-          'new file mode 100644',
-          'index 0000000..0000001',
-          '--- /dev/null',
-          `+++ b/${file}`,
-          `@@ -0,0 +1,${lines.length} @@`,
-          ...diffLines,
-        ].join('\n')
-        patches.push(patch)
-      } catch {
-        // skip unreadable files
-      }
+      const lines = entry.content.toString('utf-8').split('\n')
+      const diffLines = lines.map((l: string) => `+${l}`)
+      const patch = [
+        `diff --git a/${file} b/${file}`,
+        'new file mode 100644',
+        'index 0000000..0000001',
+        '--- /dev/null',
+        `+++ b/${file}`,
+        `@@ -0,0 +1,${lines.length} @@`,
+        ...diffLines,
+      ].join('\n')
+      patches.push(patch)
     }
   }
 
