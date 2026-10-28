@@ -4,6 +4,7 @@ import type { DiffLineAnnotation, FileDiffMetadata, AnnotationSide, SelectedLine
 import type { ReviewComment } from '../../types'
 import { CommentForm } from './CommentForm'
 import { CommentBubble } from './CommentBubble'
+import { joinLines } from '../utils'
 
 interface PendingComment {
   side: AnnotationSide
@@ -85,7 +86,7 @@ export const FileDiffCard = memo(function FileDiffCard({
     for (let lineNumber = startLine; lineNumber <= endLine; lineNumber++) {
       content.push(getLineContent(side, lineNumber))
     }
-    return content.join('\n')
+    return joinLines(content)
   }
 
   const allAnnotations: DiffLineAnnotation<ReviewComment | { _pending: true }>[] = [

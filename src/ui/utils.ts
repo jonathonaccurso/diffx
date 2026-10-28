@@ -20,3 +20,9 @@ export function fileName(filePath: string): string {
   const parts = filePath.split('/')
   return parts[parts.length - 1]
 }
+
+// Renderer lines keep their own terminator, so only unterminated lines in the
+// middle of a span need one.
+export function joinLines(lines: string[]): string {
+  return lines.map((line, i) => (i < lines.length - 1 && !line.endsWith('\n') ? `${line}\n` : line)).join('')
+}
