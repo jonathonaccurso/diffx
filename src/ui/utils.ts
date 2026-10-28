@@ -26,3 +26,19 @@ export function fileName(filePath: string): string {
 export function joinLines(lines: string[]): string {
   return lines.map((line, i) => (i < lines.length - 1 && !line.endsWith('\n') ? `${line}\n` : line)).join('')
 }
+
+export function isDiffStale(loadedFingerprint: string | null, currentFingerprint: string | null): boolean {
+  return loadedFingerprint !== null && currentFingerprint !== null && loadedFingerprint !== currentFingerprint
+}
+
+// FNV-1a over the lines, for React keys that must change when file content does.
+export function contentSignature(lines: string[]): string {
+  let hash = 0x811c9dc5
+  for (const line of lines) {
+    for (let i = 0; i < line.length; i++) {
+      hash = Math.imul(hash ^ line.charCodeAt(i), 0x01000193)
+    }
+    hash = Math.imul(hash ^ 0x0a, 0x01000193)
+  }
+  return `${lines.length}-${(hash >>> 0).toString(16)}`
+}

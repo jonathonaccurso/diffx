@@ -372,6 +372,19 @@ body {
     color: #ffffff;
 }
 
+/* Stale diff banner */
+.stale-diff-banner {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 16px;
+    font-size: 13px;
+    background: var(--comment-bg);
+    border-bottom: 1px solid var(--comment-border);
+    color: var(--text);
+}
+
 /* Layout */
 .app-body {
     display: flex;

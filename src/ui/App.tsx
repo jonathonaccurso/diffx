@@ -1,10 +1,11 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { Resizable } from 'react-resizable'
 import { parsePatchFiles } from '@pierre/diffs'
 import { Virtualizer } from '@pierre/diffs/react'
 import type { FileDiffMetadata } from '@pierre/diffs'
 import type { ReviewComment } from '../types'
 import { useDiff } from './hooks/useDiff'
+import { useDiffFingerprint } from './hooks/useDiffFingerprint'
 import { useComments } from './hooks/useComments'
 import { commentScope } from '../commentFormat'
 import { useReview } from './hooks/useReview'
@@ -16,6 +17,8 @@ import { Toolbar } from './components/Toolbar'
 import { DiffViewer } from './components/DiffViewer'
 import { FileTree } from './components/FileTree'
 import { CommentTracker } from './components/CommentTracker'
+import { StaleDiffBanner } from './components/StaleDiffBanner'
+import { isDiffStale } from './utils'
 import { SidebarStorage } from './sidebarStorage'
 
 function useWindowSize({ factor }: { factor: number }) {
@@ -34,10 +37,10 @@ function useWindowSize({ factor }: { factor: number }) {
 
 export function App() {
   const { settings, loaded, updateSettings } = useSettings()
-  const { patch, repoName, branch, customMode, binaryFiles, tabSizeMap, untrackedFiles, loading, error } = useDiff({
-    staged: settings.staged,
-    untracked: settings.untracked,
-  })
+  const diffOptions = { staged: settings.staged, untracked: settings.untracked }
+  const { patch, fingerprint, repoName, branch, customMode, binaryFiles, tabSizeMap, untrackedFiles, loading, error, reload, reloading } =
+    useDiff(diffOptions)
+  const diffStale = isDiffStale(fingerprint, useDiffFingerprint(diffOptions))
   const { comments, addComment, addScopedComment, removeComment, editComment, replyToComment, copyAllComments } =
     useComments()
   const { meta: reviewMeta } = useReview()
@@ -94,6 +97,20 @@ export function App() {
     if (fullFiles.size === 0) return files
     return files.map((f) => fullFiles.get(fileKey(f)) ?? f)
   }, [files, fullFiles])
+
+  // Remounting a changed file's card clamps the scroll container to the top
+  // for a moment, so the position is put back while the reload settles.
+  const reloadScroll = useRef<{ top: number; until: number } | null>(null)
+  const handleReload = useCallback(() => {
+    const scroller = document.querySelector('.main-scroll')
+    reloadScroll.current = scroller ? { top: scroller.scrollTop, until: Date.now() + 3000 } : null
+    return reload()
+  }, [reload])
+  useLayoutEffect(() => {
+    const keep = reloadScroll.current
+    const scroller = document.querySelector('.main-scroll')
+    if (keep && scroller && Date.now() < keep.until && scroller.scrollTop !== keep.top) scroller.scrollTop = keep.top
+  }, [displayFiles])
 
   const { viewedFiles, setViewed } = useViewed(files)
 
@@ -207,7 +224,7 @@ export function App() {
         deletions={diffStats.deletions}
         commentCount={comments.length}
         diffStyle={settings.diffStyle}
-        diffOptions={{ staged: settings.staged, untracked: settings.untracked }}
+        diffOptions={diffOptions}
         defaultTabSize={settings.defaultTabSize}
         softWrap={settings.softWrap}
         browser={settings.browser}
@@ -223,6 +240,7 @@ export function App() {
         onBrowserChange={(browser) => updateSettings({ browser })}
         onCopyComments={copyAllComments}
       />
+      {diffStale && <StaleDiffBanner reloading={reloading} onReload={handleReload} />}
       <div className="app-body">
         {sidebar.collapsed ? (
           <aside className="sidebar sidebar-collapsed" style={{ width: sidebar.visibleSize() }}>

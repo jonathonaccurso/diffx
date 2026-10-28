@@ -6,6 +6,7 @@ import { FileDiffCard } from './FileDiffCard'
 import { BinaryFileDiff } from './BinaryFileDiff'
 import { CommentBubble } from './CommentBubble'
 import { CommentForm } from './CommentForm'
+import { contentSignature } from '../utils'
 
 interface DiffViewerProps {
   files: FileDiffMetadata[]
@@ -79,6 +80,11 @@ export const DiffViewer = memo(function DiffViewer({
     })
   }, [files])
 
+  const signatures = useMemo(
+    () => new Map(sortedFiles.map((f) => [f, contentSignature([...f.deletionLines, ...f.additionLines])])),
+    [sortedFiles],
+  )
+
   const handleViewedChange = useCallback(
     (filePath: string, viewed: boolean) => {
       onViewedChange(filePath, viewed)
@@ -149,7 +155,7 @@ export const DiffViewer = memo(function DiffViewer({
             // @pierre/diffs <FileDiff> under the Virtualizer does not re-process
             // an in-place fileDiff change, so without a remount the upgraded
             // diff never renders and hunk-context expansion controls never appear.
-            key={`${filePath}-${index}-${file.isPartial ? 'p' : 'f'}`}
+            key={`${filePath}-${index}-${file.isPartial ? 'p' : 'f'}-${signatures.get(file)}`}
             id={`file-${filePath}`}
             fileDiff={file}
             filePath={filePath}

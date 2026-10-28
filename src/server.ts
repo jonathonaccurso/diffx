@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join, extname, resolve } from 'node:path'
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { serve } from '@hono/node-server'
 import { getGitDiff, getCustomGitDiff, getRepoName, getBranchName, getFileContent, getBlobContent, getWorktreeFileContent, isImageFile, getTabSizeForFiles, getUntrackedFilePaths } from './git.js'
 import { loadSettings, saveSettings } from './settings.js'
@@ -13,6 +15,10 @@ import { isSafePath } from './path.js'
 import type { CommentReply, ReviewComment, ReviewMeta } from './types.js'
 
 const MAX_IMPORT_BYTES = 1_000_000
+
+function patchFingerprint(patch: string): string {
+  return createHash('sha256').update(patch).digest('hex')
+}
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html',
@@ -113,15 +119,17 @@ export function createApp(options: CreateAppOptions) {
   const meta: ReviewMeta = reviewMeta ?? { persisted: false, restoredCount: 0 }
   const viewedFiles = new Map<string, string>()
 
+  const readPatch = (staged: boolean, untracked: boolean): string =>
+    isCustomMode ? getCustomGitDiff(customDiffArgs) : getGitDiff({ staged, untracked })
+
+  const diffQuery = (c: Context) => ({
+    staged: c.req.query('staged') === 'true',
+    untracked: c.req.query('untracked') === 'true',
+  })
+
   app.get('/api/diff', (c) => {
-    let patch: string
-    const staged = c.req.query('staged') === 'true'
-    const untracked = c.req.query('untracked') === 'true'
-    if (isCustomMode) {
-      patch = getCustomGitDiff(customDiffArgs)
-    } else {
-      patch = getGitDiff({ staged, untracked })
-    }
+    const { staged, untracked } = diffQuery(c)
+    const patch = readPatch(staged, untracked)
     const repoName = getRepoName()
     const branch = getBranchName()
     const untrackedFiles = untracked ? getUntrackedFilePaths() : []
@@ -129,7 +137,13 @@ export function createApp(options: CreateAppOptions) {
     const binaryFiles = parseBinaryFiles(patch, untrackedSet)
     const filePaths = parseFilePaths(patch)
     const tabSizeMap = getTabSizeForFiles(filePaths)
-    return c.json({ patch, repoName, branch, customMode: isCustomMode, binaryFiles, tabSizeMap, untrackedFiles })
+    const fingerprint = patchFingerprint(patch)
+    return c.json({ patch, fingerprint, repoName, branch, customMode: isCustomMode, binaryFiles, tabSizeMap, untrackedFiles })
+  })
+
+  app.get('/api/diff/fingerprint', (c) => {
+    const { staged, untracked } = diffQuery(c)
+    return c.json({ fingerprint: patchFingerprint(readPatch(staged, untracked)) })
   })
 
   app.get('/api/file-content', (c) => {
@@ -163,9 +177,8 @@ export function createApp(options: CreateAppOptions) {
     if (!path || !oldOid || !newOid) {
       return c.json({ error: 'Missing path or oids' }, 400)
     }
-    const staged = c.req.query('staged') === 'true'
-    const untracked = c.req.query('untracked') === 'true'
-    const patch = isCustomMode ? getCustomGitDiff(customDiffArgs) : getGitDiff({ staged, untracked })
+    const { staged, untracked } = diffQuery(c)
+    const patch = readPatch(staged, untracked)
     if (!diffContainsFileVersion(patch, path, oldOid, newOid)) {
       return c.json({ error: 'File version not in current diff' }, 404)
     }

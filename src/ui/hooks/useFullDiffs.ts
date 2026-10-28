@@ -63,16 +63,23 @@ export function useFullDiffs(patch: string | null, files: FileDiffMetadata[], op
   const [fullFiles, setFullFiles] = useState<Map<string, FileDiffMetadata>>(() => new Map())
   const requested = useRef(new Set<string>())
   const patchRef = useRef(patch)
+  const currentKeys = useRef(new Set<string>())
 
   useEffect(() => {
+    const chunkMap = patch ? buildChunkMap(patch) : new Map<string, string>()
+    currentKeys.current = new Set(chunkMap.keys())
     if (patchRef.current !== patch) {
+      // Keys carry the blob oids, so an upgrade for a file the new patch still
+      // lists unchanged stays valid and keeps its card mounted.
       patchRef.current = patch
-      requested.current = new Set()
-      setFullFiles(new Map())
+      requested.current = new Set([...requested.current].filter((key) => currentKeys.current.has(key)))
+      setFullFiles((prev) => {
+        const kept = [...prev].filter(([key]) => currentKeys.current.has(key))
+        return kept.length === prev.size ? prev : new Map(kept)
+      })
     }
     if (!patch) return
 
-    const chunkMap = buildChunkMap(patch)
     for (const file of files) {
       if (!file.isPartial || file.hunks.length === 0) continue
       if (file.type !== 'change' && file.type !== 'rename-changed') continue
@@ -94,7 +101,7 @@ export function useFullDiffs(patch: string | null, files: FileDiffMetadata[], op
       fetch(`/api/file-versions?${params}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data: { old: string; new: string } | null) => {
-          if (!data || patchRef.current !== patch) return
+          if (!data || !currentKeys.current.has(key)) return
           const upgraded = processFile(chunk, {
             cacheKey: `full:${key}`,
             oldFile: { name: file.prevName ?? file.name, contents: data.old },
